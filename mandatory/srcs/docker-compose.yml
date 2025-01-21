@@ -1,0 +1,82 @@
+services:
+ 
+  mariadb:
+    container_name: mariadb
+    env_file:
+      - .env
+      - ../secrets/credentials.txt
+      - ../secrets/db_password.txt
+      - ../secrets/db_root_password.txt
+    volumes:
+      - mariadb:/var/lib/mysql/
+    networks:
+      - inception
+    init: true
+    build:
+      context: ./requirements/mariadb/
+    restart: on-failure
+
+  wordpress:
+    container_name: wordpress
+    env_file:
+      - .env
+      - ../secrets/credentials.txt
+      - ../secrets/db_password.txt
+      - ../secrets/db_root_password.txt
+    volumes:
+      - wordpress:/var/www/html
+    networks:
+      - inception
+    init: true
+    build:
+      context: ./requirements/wordpress/
+    depends_on:
+      - mariadb
+    restart: always
+  
+  nginx:
+    container_name: nginx
+    env_file:
+      - .env
+    volumes:
+      - wordpress:/var/www/html
+    networks:
+      - inception
+    build:
+      context: ./requirements/nginx/
+      args:
+        CERT_FOLDER: ${CERT_FOLDER}
+        CERTIFICATE: ${CERTIFICATE}
+        KEY: ${KEY}
+        COUNTRY: ${COUNTRY}
+        STATE: ${STATE}
+        LOCALITY: ${LOCALITY}
+        ORGANIZATION: ${ORGANIZATION}
+        UNIT: ${UNIT}
+        COMMON_NAME: ${COMMON_NAME}
+    depends_on:
+      - wordpress
+    ports:
+      - '443:443'
+    restart: always
+
+
+volumes:
+  mariadb:
+    driver: local
+    driver_opts:
+      type: none
+      device: ~/data/mariadb
+      o: bind
+  wordpress:
+    driver: local
+    driver_opts:
+      type: none
+      device: ~/data/wordpress
+      o: bind
+
+networks:
+  inception:
+    name: inception
+    driver: bridge
+

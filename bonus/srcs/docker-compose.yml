@@ -1,0 +1,167 @@
+services:
+  adminer:
+    container_name: adminer
+    env_file:
+      - .env
+      - ../secrets/credentials.txt
+      - ../secrets/db_password.txt
+      - ../secrets/db_root_password.txt
+    build:
+      context: ./requirements/bonus/adminer/ 
+    depends_on:
+      - mariadb
+    ports:
+      - "80:80"
+    networks:
+      - inception
+    init: true
+    restart: always
+  
+  redis:
+    container_name: redis
+    build:
+      context: ./requirements/bonus/redis/
+    ports:
+      - "6379:6379"
+    networks:
+      - inception
+    init: true
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: always
+
+  static-site:
+    container_name: static-site
+    build:
+      context: ./requirements/bonus/static/
+    networks:
+      - inception
+    init: true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1313/health.html"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: always
+
+  mariadb:
+    container_name: mariadb
+    env_file:
+      - .env
+      - ../secrets/credentials.txt
+      - ../secrets/db_password.txt
+      - ../secrets/db_root_password.txt
+    volumes:
+      - mariadb:/var/lib/mysql/
+    networks:
+      - inception
+    init: true
+    build:
+      context: ./requirements/mariadb/
+    restart: on-failure
+
+  wordpress:
+    container_name: wordpress
+    env_file:
+      - .env
+      - ../secrets/credentials.txt
+      - ../secrets/db_password.txt
+      - ../secrets/db_root_password.txt
+    volumes:
+      - wordpress:/var/www/html
+    networks:
+      - inception
+    init: true
+    build:
+      context: ./requirements/wordpress/
+    depends_on:
+      - mariadb
+      - redis
+    restart: always
+  
+  ftp-server:
+    container_name: ftp-server
+    env_file:
+      - ../secrets/credentials.txt
+      - ../secrets/db_password.txt
+    volumes:
+      - wordpress:/var/www/html
+    networks:
+      - inception
+    ports:
+      - "20:20"
+      - "21:21"
+      - "40000-40009:40000-40009"
+    init: true
+    build:
+      context: ./requirements/bonus/ftp/
+    restart: always
+
+  redis-commander:
+    container_name: redis-commander
+    environment:
+      - REDIS_HOST=redis # Nom du service Redis
+      - REDIS_PORT=6379 # Port utilise par Redis
+    networks:
+      - inception
+    ports:
+      - "8081:8081" # Mappage du port local 8081 vers le conteneur
+    init: true
+    build:
+      context: ./requirements/bonus/redis-commander/
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  nginx:
+    container_name: nginx
+    env_file:
+      - .env
+    volumes:
+      - wordpress:/var/www/html
+    networks:
+      - inception
+    build:
+      context: ./requirements/nginx/
+      args:
+        CERT_FOLDER: ${CERT_FOLDER}
+        CERTIFICATE: ${CERTIFICATE}
+        KEY: ${KEY}
+        COUNTRY: ${COUNTRY}
+        STATE: ${STATE}
+        LOCALITY: ${LOCALITY}
+        ORGANIZATION: ${ORGANIZATION}
+        UNIT: ${UNIT}
+        COMMON_NAME: ${COMMON_NAME}
+    depends_on:
+      - wordpress
+      - static-site
+      - ftp-server
+    init: true
+    ports:
+      - "443:443"                 # For WP
+      - "1313:1313"               # For the static site
+    restart: always
+
+volumes:
+  mariadb:
+    driver: local
+    driver_opts:
+      type: none
+      device: ~/data/mariadb
+      o: bind
+  wordpress:
+    driver: local
+    driver_opts:
+      type: none
+      device: ~/data/wordpress
+      o: bind
+
+networks:
+  inception:
+    name: inception
+    driver: bridge
+
